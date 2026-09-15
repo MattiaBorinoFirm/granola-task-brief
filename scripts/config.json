@@ -1,0 +1,15 @@
+{
+  "bot_address": "LA-TUA-CASELLA-BOT@gmail.com",
+  "recipient": "IL-TUO-INDIRIZZO@example.com",
+  "proprietario": "NOME COGNOME",
+  "nome": "NOME",
+  "omonimo": "",
+  "contesto": "lavora su più clienti e progetti",
+  "subject": "Task del giorno",
+  "keychain_service": "granola-task-bot",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 465,
+  "imap_host": "imap.gmail.com",
+  "imap_port": 993,
+  "reply_lookback_days": 14
+}

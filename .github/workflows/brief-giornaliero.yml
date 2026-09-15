@@ -1,0 +1,93 @@
+name: Brief task giornaliero
+
+# Gli orari NON stanno qui. A far partire il brief è uno scheduler esterno
+# (per esempio cron-job.org) che chiama workflow_dispatch via API REST agli
+# orari che hai scelto; il fuso, ora legale compresa, lo gestisce lui.
+#
+# Il perché è una misura, non una preferenza. Con `on: schedule`, nell'ambiente
+# in cui questo sistema è nato, il repository ha consegnato UN solo run in
+# quattro giorni, e con 4 ore e 51 minuti di ritardo sull'orario previsto: un
+# brief che dice «oggi» e arriva a mezzogiorno non è un brief. Provati tre
+# minuti diversi (0, 7, 23) su due workflow, per escludere la congestione del
+# minuto tondo: il ritardo non dipendeva da quello.
+#
+# Tenere anche `on: schedule` non sarebbe innocuo: i due pianificatori
+# manderebbero due brief per slot, e due giri ravvicinati creano task doppi —
+# è già successo. Un solo pianificatore, quello puntuale.
+#
+# La configurazione dello scheduler esterno è documentata in
+# docs/installazione.md. Se il brief smette di arrivare, si guarda lì per
+# primo: la causa più probabile è il token scaduto.
+on:
+  workflow_dispatch:
+    inputs:
+      prova:
+        description: "Prova a vuoto: non salva lo stato e non manda la mail"
+        type: boolean
+        default: false
+      diagnostica:
+        description: "Solo diagnosi Granola: non tocca niente, stampa cosa risponde l'API"
+        type: boolean
+        default: false
+
+concurrency:
+  group: brief-giornaliero
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # serve a ricommittare lo stato dei task
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installa le dipendenze
+        run: pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Prepara l'identità per i commit
+        run: |
+          git config user.name  "granola-task-bot"
+          git config user.email "granola-task-bot@users.noreply.github.com"
+
+      - name: Componi e manda il brief
+        env:
+          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          GRANOLA_API_KEY:   ${{ secrets.GRANOLA_API_KEY }}
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+          GEMINI_MODEL:      ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          # Senza questo Python bufferizza lo stdout, e se l'esecuzione si
+          # blocca il log resta vuoto: si perde proprio la riga che direbbe
+          # dove si è fermata.
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ inputs.diagnostica }}" = "true" ]; then
+            python3 scripts/granola.py check --days 7
+          elif [ "${{ inputs.prova }}" = "true" ]; then
+            python3 scripts/brief.py --dry-run
+          else
+            python3 scripts/brief.py
+          fi
+
+      # Lo stato dei task lo committa salva-stato.sh, dentro brief.py, prima
+      # dell'invio. Il filo del thread si può salvare solo dopo, perché è
+      # l'invio a produrlo: per questo sta in un commit suo.
+      - name: Conserva il filo del thread
+        if: inputs.prova != true && inputs.diagnostica != true
+        run: |
+          if ! git diff --quiet -- stato/thread.json 2>/dev/null || \
+             git ls-files --others --exclude-standard --error-unmatch stato/thread.json >/dev/null 2>&1; then
+            git add -- stato/thread.json
+            git commit -q -m "Filo del thread dopo il brief del $(TZ=Europe/Rome date +%F)" \
+              -- stato/thread.json
+            git push -q origin HEAD:${{ github.ref_name }}
+            echo "Filo del thread aggiornato."
+          else
+            echo "Filo del thread invariato."
+          fi

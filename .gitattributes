@@ -1,0 +1,7 @@
+# Nel repository i file di testo stanno sempre con fine riga LF, comunque siano
+# sul disco di chi li modifica. Non è pignoleria: gli script girano su un runner
+# Linux, e un `salva-stato.sh` committato con CRLF da una macchina Windows si
+# pianta sullo shebang («bad interpreter») al primo giro utile.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
